@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>a</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+    <script>const None = undefined; const True=true; const False=false;</script>
+    <script src="data.js"></script>
+    <style>
+        .chat-message {
+            width: 70%;
+            margin-bottom: 1rem;
+        }
+        .user-message {
+            margin-left: auto;
+            background-color: #0084ff;
+            color: white;
+            border-radius: 1.5rem 0.2rem 1.5rem 1.5rem;
+        }
+        .assistant-message {
+            margin-right: auto;
+            background-color: #f0f0f0;
+            color: black;
+            border-radius: 0.2rem 1.5rem 1.5rem 1.5rem;
+        }
+        .tool-message {
+            width: 90%;
+            margin: 0.5rem auto;
+            font-family: monospace;
+            font-size: 0.9em;
+            background-color: #f8f8f8;
+            border-left: 4px solid #9ca3af;
+            border-radius: 0.5rem;
+        }
+        pre[class*="language-"] {
+            background-color: #1e1e1e !important;
+            border-radius: 0.5rem;
+            margin: 0 !important;
+            padding: 1rem !important;
+        }
+        .file-content {
+            max-height: calc(100vh - 12rem);
+            overflow-y: auto;
+        }
+        .test-result {
+            background-color: #1e1e1e;
+            color: #e0e0e0;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .test-result .passed { color: #4ade80; }
+        .test-result .failed { color: #ef4444; }
+        .test-result .warning { color: #fbbf24; }
+    </style>
+</head>
+<body class="bg-gray-50">
+  <div class="h-screen flex flex-col">
+	<!-- First, add new task navigation buttons to the HTML navigation section -->
+<!-- First, add new task navigation buttons to the HTML navigation section -->
+<div class="flex justify-center gap-4 p-4 bg-white border-b shadow-sm">
+    <button 
+        id="prevTaskBtn"
+        class="flex items-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-300 transition-colors"
+        disabled
+    >
+        ← Prior Task
+    </button>
+    <button 
+        id="prevBtn"
+        class="flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 transition-colors"
+        disabled
+    >
+        ← Prior Step
+    </button>
+    <div class="flex flex-col items-center gap-1">
+        <span id="taskCounter" class="text-sm font-medium text-gray-600">
+            Task 1 of 1
+        </span>
+        <span id="stepCounter" class="text-sm font-medium text-gray-600">
+            Step 1 of 1
+        </span>
+    </div>
+    <button 
+        id="nextBtn"
+        class="flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 transition-colors"
+    >
+        Next Step →
+    </button>
+    <button 
+        id="nextTaskBtn"
+        class="flex items-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:bg-gray-300 transition-colors"
+    >
+        Next Task →
+    </button>
+</div>
+        <!-- Main Content -->
+        <div class="flex flex-1 overflow-hidden">
+            <!-- Left Panel - Messages -->
+            <div id="messagePanel" class="w-1/2 p-6 overflow-y-auto bg-white">
+            </div>
+
+            <!-- Right Panel - Files/Terminal -->
+            <div class="w-1/2 flex flex-col bg-white border-l">
+                <!-- Tabs -->
+                <div id="fileTabs" class="flex overflow-x-auto bg-gray-50 border-b px-2">
+                </div>
+
+                <!-- Content Area -->
+                <div id="contentArea" class="flex-1 overflow-y-auto p-4">
+                    <div class="text-gray-500 text-center mt-8">
+                        Select a file to view its contents
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class LLMViewer {
+            constructor(data) {
+                this.steps = [];
+                this.currentStep = 0;
+                this.activeTab = null;
+                this.processLogData(data || []);
+                this.initializeUI();
+                this.render();
+            }
+            
+            processLogData(logData) {
+                let currentMessages = [];
+                let lastToolCall = null;
+                let currentFiles = {};
+                
+                logData.forEach(entry => {
+if (entry.role === 'user' && entry.content?.[0]?.type === 'tool_result') {
+    const toolResult = entry.content[0];
+    const previousEntry = logData[logData.indexOf(entry) - 1];
+    const toolCall = previousEntry?.content?.find(c => c.type === 'tool_use');
+
+    // Remove any tool call message we added since we'll group it with the result
+    currentMessages = currentMessages.filter(msg => 
+        !(msg.role === 'tool_call' && msg.tool === toolCall?.name)
+    );
+
+    if (toolCall?.name === 'finish_task') {
+        // Special handling for task output
+        currentFiles['*OUTPUT*'] = toolResult.content;
+        lastToolCall = {
+            type: 'file',
+            action: 'output',
+            path: '*OUTPUT*',
+            content: toolResult.content
+        };
+    } else if (toolCall) {
+        // Handle standard tool calls
+                            if (toolCall.name === 'write_file') {
+                                currentFiles[toolCall.input.absolute_path] = toolCall.input.content;
+                                lastToolCall = {
+                                    type: 'file',
+                                    action: 'write',
+                                    path: toolCall.input.absolute_path,
+                                    content: toolCall.input.content
+                                };
+                            } else if (toolCall.name === 'read_file') {
+                                currentFiles[toolCall.input.absolute_path] = toolResult.content;
+                                lastToolCall = {
+                                    type: 'file',
+                                    action: 'read',
+                                    path: toolCall.input.absolute_path,
+                                    content: toolResult.content
+                                };
+                            } else if (toolCall.name === 'run_bash') {
+								currentFiles['*BASH*'] = '$ ' + toolCall.input.command + "\n" + toolResult.content;
+                                lastToolCall = {
+                                    type: 'file',
+                                    actionn: 'bash',
+                                    path: '*BASH*',
+                                    content: '$ ' + toolCall.input.command + "\n" + toolResult.content
+                                };
+                            } else if (toolCall.name === 'run_python') {
+								currentFiles['*BASH*'] = '$ python3 ' + toolCall.input.absolute_path + " " + (toolCall.input.arguments||[]).join(" ") + "\n" + toolResult.content;
+                                lastToolCall = {
+                                    type: 'file',
+                                    actionn: 'bash',
+                                    path: '*BASH*',
+                                    content: '$ ' + toolCall.input.command + "\n" + toolResult.content
+                                };
+                            }
+
+                            // Create step after tool result
+                            if (currentMessages.length > 0 || lastToolCall) {
+                                this.steps.push({
+                                    messages: [...currentMessages],
+                                    toolCall: lastToolCall,
+                                    files: {...currentFiles}
+                                });
+                                currentMessages = [];
+                                lastToolCall = null;
+                            }
+                        }
+                    }
+                    else if (entry.role === 'user' && entry.content?.[0]?.text) {
+                        if (currentMessages.length > 0) {
+                            this.steps.push({
+                                messages: [...currentMessages],
+                                files: {...currentFiles}
+                            });
+                            currentMessages = [];
+                        }
+                        currentMessages.push({
+                            role: 'user',
+                            content: entry.content[0].text
+                        });
+                    } 
+                    else if (entry.role === 'assistant' && Array.isArray(entry.content)) {
+    entry.content.forEach(content => {
+        if (content?.type === 'text') {
+            // If we have a pending tool operation, create its step first
+            if (lastToolCall) {
+                this.steps.push({
+                    messages: [...currentMessages],
+                    toolCall: lastToolCall,
+                    files: {...currentFiles}
+                });
+                currentMessages = [];
+                lastToolCall = null;
+            }
+            currentMessages.push({
+                role: 'assistant',
+                content: content.text
+            });
+        } else if (content?.type === 'tool_use') {
+            // Just add the tool call message, don't create a step yet
+            currentMessages.push({
+                role: 'tool_call',
+                tool: content.name,
+                input: content.input
+            });
+        }
+    });
+}
+                });
+                
+                // Add remaining messages
+                if (currentMessages.length > 0 || lastToolCall) {
+                    this.steps.push({
+                        messages: [...currentMessages],
+                        toolCall: lastToolCall,
+                        files: {...currentFiles}
+                    });
+                }
+            }
+            
+// Add this method to LLMViewer class
+updateActiveTab(step) {
+    // If the current step has a file operation, make that file active
+    if (step?.toolCall?.type === 'file') {
+        this.activeTab = step.toolCall.path;
+    }
+}
+
+// Then modify the initializeUI method
+initializeUI() {
+    document.getElementById('prevBtn').addEventListener('click', () => {
+        if (this.currentStep > 0) {
+            this.currentStep--;
+            // Update active tab based on the previous step
+            this.updateActiveTab(this.steps[this.currentStep]);
+            this.render();
+        }
+    });
+    
+    document.getElementById('nextBtn').addEventListener('click', () => {
+        if (this.currentStep < this.steps.length - 1) {
+            this.currentStep++;
+            // Update active tab based on the next step
+            this.updateActiveTab(this.steps[this.currentStep]);
+            this.render();
+        }
+    });
+			       }
+			       
+            formatToolCallArgs(input) {
+                if (!input) return '';
+                return Object.entries(input)
+                    .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+                    .join(', ');
+            }
+
+            renderMessage(message) {
+                if (!message) return '';
+				if (!message.content) {
+					message.content = ''
+				}
+                
+                if (message.role === 'tool_call') {
+                    return `
+                        <div class="tool-message p-3">
+                            <div class="text-sm text-gray-600">
+                                🔧 ${message.tool}(${this.formatToolCallArgs(message.input)})
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                // Skip content for write operations - it will be shown in the right panel
+                if (message.role === 'assistant' && message.content.includes('```')) {
+                    return `
+                        <div class="chat-message assistant-message p-4">
+                            <div class="whitespace-pre-wrap">
+                                ${message.content.split('```')[0].trim()}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="chat-message ${message.role === 'user' ? 'user-message' : 'assistant-message'} p-4">
+                        <div class="whitespace-pre-wrap">${message.content}</div>
+                    </div>
+                `;
+            }
+            
+            renderFileTab(path, isActive) {
+                if (!path) return '';
+                const isOutput = path === '*OUTPUT*' || path === '*BASH*';
+                const fileName = path.replace("/usr/src/app/","");
+                return `
+                    <button
+                        onclick="viewer.selectTab('${path}')"
+                        class="flex items-center px-4 py-3 border-r ${
+                            isActive ? 'bg-white border-b-2 border-b-blue-500 font-medium' : 'hover:bg-gray-100'
+                        } ${isOutput ? 'text-purple-700 font-semibold' : ''}"
+                    >
+                        ${fileName}
+                    </button>
+                `;
+            }
+
+            formatTestOutput(content) {
+                return content
+                    .replace(/(.*PASS.*)/g, '<span class="passed">$1</span>')
+                    .replace(/(.*FAIL.*)/g, '<span class="failed">$1</span>')
+                    .replace(/(.*WARNING.*)/g, '<span class="warning">$1</span>')
+                    .replace(/(.*Error.*)/g, '<span class="failed">$1:</span>');
+            }
+
+            getLanguageFromPath(path) {
+                if (path === '*OUTPUT*') return 'plaintext';
+                if (path === '*BASH*') return 'plaintext';
+                const ext = path.split('.').pop().toLowerCase();
+                const languageMap = {
+                    'py': 'python',
+                    'js': 'javascript',
+                    'jsx': 'javascript',
+                    'sh': 'bash',
+                    'bash': 'bash'
+                };
+                return languageMap[ext] || 'plaintext';
+            }
+
+            
+            selectTab(path) {
+                this.activeTab = path;
+                this.render(path);
+            }
+            
+getCurrentFiles() {
+                const files = {};
+                for (let i = 0; i <= this.currentStep; i++) {
+                    if (this.steps[i]?.files) {
+                        Object.assign(files, this.steps[i].files);
+                    }
+                }
+                return files;
+            }
+
+render(forceTab) {
+    const currentState = this.steps[this.currentStep] || { messages: [], files: {}, toolCall: null };
+    const currentFiles = this.getCurrentFiles();
+    
+    // Update navigation
+    document.getElementById('prevBtn').disabled = this.currentStep === 0;
+    document.getElementById('nextBtn').disabled = this.currentStep === this.steps.length - 1;
+    document.getElementById('stepCounter').textContent = 
+        `Step ${this.currentStep + 1} of ${this.steps.length}`;
+    
+    // Update message panel
+    const messagePanel = document.getElementById('messagePanel');
+    messagePanel.innerHTML = this.steps
+        .slice(0, this.currentStep + 1)
+        .map((step, idx) => `
+            <div class="mb-6">
+                ${(step.messages || [])
+                    .filter(msg => msg.role !== 'tool_call' || !step.toolCall || msg.tool !== step.toolCall.type)
+                    .map(msg => this.renderMessage(msg)).join('')}
+            </div>
+        `)
+        .join('');
+    
+    // Auto-scroll to bottom
+    messagePanel.scrollTop = messagePanel.scrollHeight;
+    
+    // Update file tabs
+    const fileTabs = document.getElementById('fileTabs');
+    fileTabs.innerHTML = Object.keys(currentFiles)
+        .map(path => this.renderFileTab(path, path === this.activeTab))
+        .join('');
+    
+    // If this step has a file operation and no tab is selected, select that file's tab
+					if (forceTab) {
+						this.activeTab = forceTab;
+					} 
+				else if (currentState.toolCall?.type === 'file') {
+        this.activeTab = currentState.toolCall.path;
+    } else if (!this.activeTab && Object.keys(currentFiles).length > 0) {
+        // If still no active tab but we have files, select the first one
+        this.activeTab = Object.keys(currentFiles)[0];
+	}
+
+    // Update content area based on active tab, not just current tool call
+    const contentArea = document.getElementById('contentArea');
+    if (this.activeTab) {
+        // Show content based on the active tab
+        const content = currentFiles[this.activeTab];
+        if (content !== undefined) {
+            if (this.activeTab === '*OUTPUT*') {
+                contentArea.innerHTML = `
+                    <div class="test-result">
+                        ${this.formatTestOutput(content)}
+                    </div>
+                `;
+			} else if (this.activeTab === '*BASH*') {
+                contentArea.innerHTML = `
+                    <div class="test-result">
+                        ${this.formatTestOutput(content)}
+                    </div>
+                `;
+            } else {
+                const language = this.getLanguageFromPath(this.activeTab);
+                let header = '';
+                
+                // Add header if this file is being operated on in current step
+                if (currentState.toolCall?.type === 'file' && currentState.toolCall.path === this.activeTab) {
+                    const icon = currentState.toolCall.action === 'read' ? '📖' : '✍️';
+                    header = '';
+                }
+                
+                contentArea.innerHTML = `
+                    ${header}
+                    <div class="file-content">
+                        <pre><code class="language-${language}">${content}</code></pre>
+                    </div>
+                `;
+            }
+        } else {
+            contentArea.innerHTML = `
+                <div class="text-gray-500 text-center mt-8">
+                    No content available for ${this.activeTab}
+                </div>
+            `;
+        }
+    } else {
+        contentArea.innerHTML = `
+            <div class="text-gray-500 text-center mt-8">
+                Select a file to view its contents
+            </div>
+        `;
+    }
+
+    // Re-run syntax highlighting
+    Prism.highlightAll();
+}
+
+        }
+
+class TaskManager {
+    constructor(tasksData) {
+        this.tasks = tasksData;
+        this.currentTaskIndex = 0;
+        this.currentViewer = null;
+        this.initializeUI();
+        this.createViewer();
+    }
+
+    initializeUI() {
+        document.getElementById('prevTaskBtn').addEventListener('click', () => {
+            if (this.currentTaskIndex > 0) {
+                this.currentTaskIndex--;
+                this.createViewer();
+                this.updateTaskNavigation();
+            }
+        });
+
+        document.getElementById('nextTaskBtn').addEventListener('click', () => {
+            if (this.currentTaskIndex < this.tasks.length - 1) {
+                this.currentTaskIndex++;
+                this.createViewer();
+                this.updateTaskNavigation();
+            }
+        });
+
+        this.updateTaskNavigation();
+    }
+
+    createViewer() {
+        // Clean up existing viewer if necessary
+        if (this.currentViewer) {
+            // Reset UI elements
+            document.getElementById('messagePanel').innerHTML = '';
+            document.getElementById('fileTabs').innerHTML = '';
+            document.getElementById('contentArea').innerHTML = '';
+        }
+
+        // Create new viewer for current task
+        this.currentViewer = new LLMViewer(this.tasks[this.currentTaskIndex]);
+		viewer = this.currentViewer;
+    }
+
+    updateTaskNavigation() {
+        document.getElementById('prevTaskBtn').disabled = this.currentTaskIndex === 0;
+        document.getElementById('nextTaskBtn').disabled = this.currentTaskIndex === this.tasks.length - 1;
+        document.getElementById('taskCounter').textContent = 
+            `Task ${this.currentTaskIndex + 1} of ${this.tasks.length}`;
+    }
+}
+
+			let viewer;
+// Initialize with the multi-task data structure
+const taskManager = new TaskManager(DATA);
+window.taskManager = taskManager;
+    </script>
+</body>
+</html>
