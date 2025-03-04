@@ -4,7 +4,7 @@
 
 <sup>1</sup>Google DeepMind and <sup>2</sup>ETH Zurich.
 
-Read our paper [https://arxiv.org/abs/todo](here).
+Read our paper [https://arxiv.org/abs/2503.01811](here).
 
 ## Overview
 
@@ -18,7 +18,7 @@ security researchers write papers on. An LLM that could saturate this benchmark 
 produced novel research output, because some of the defenses here have never been broken
 by a human expert.
 
-The primary finding from [our paper that introduces this benchmark](https://arxiv.org/abs/todo) is that
+The primary finding from [our paper that introduces this benchmark](https://arxiv.org/abs/2503.01811) is that
 current LLMs know the techniques necessary to break CTF-like "homework-style" defenses
 when they are presented with easy-to-read code,
 but when LLMs are asked to break real-world defenses (not designed to be easy to study)
@@ -75,8 +75,8 @@ pip install torch torchvision anthropic openai
 From here you will then need to download the clean test datasets (CIFAR-10, MNIST, and ImageNet) with
 
 ```
-wget todo
-tar -xzf datasets.tgz
+wget https://github.com/ethz-spylab/autoadvexbench/releases/download/v0/datasets.tar
+tar -xf datasets.tar
 ```
 
 Finally, you will need to download the dataset of defenses.
@@ -85,8 +85,8 @@ CTF-like examples, you can use the following link instead.
 You should do this first.
 
 ```
-wget todo
-tar -xzf selfstudy.tar
+wget https://github.com/ethz-spylab/autoadvexbench/releases/download/v0/selfstudy.tar
+tar -xf selfstudy.tar
 ```
 
 If you want to do a full run of the benchmark then you will need
@@ -94,8 +94,9 @@ to download all of the other defenses which is a much larger
 (20GB) download.
 
 ```
-wget todo
-tar -xzf defenses.tar
+wget https://github.com/ethz-spylab/autoadvexbench/releases/download/v0/defenses.tar.part.{0..15}
+cat defenses.tar.part.{0..15} > defenses.tar
+tar -xf defenses.tar
 ```
 
 
