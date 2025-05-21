@@ -59,7 +59,7 @@ try_load_container(config)
 
 CONTAINER_NAME = config['docker_env_name']
 
-GPUS = "1"
+GPUS = "0"
 
 import uuid
 

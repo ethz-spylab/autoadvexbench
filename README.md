@@ -118,14 +118,40 @@ docker build -t ab-selfstudy-adversarial-robustness .
 
 Once we have built the defense, we can now verify that it indeed classifies the
 clean test images correctly. To do this, we first start the docker server, and
-then run the evaluation procedure
+then run the evaluation procedure.
+
+There are two ways to start docker. One is to run the docker server with sudo
+explicitly after pip installing flask and docker with sudo
 
 ```
 cd evaluate
 sudo python3 -m pip install flask docker
 sudo python3 docker_server.py &
+```
+
+Alternatively, you can add a docker group (if it's not already present) and then
+run commands as yourself with this docker group
+
+```
+# If the docker group doesn't exist do this
+sudo groupadd docker
+sudo usermod -aG docker	<YOUR USERID>
+sudo chown root:docker /var/run/docker.sock
+
+# then do this
+newgrp docker
+
+# then run the rest as you
+cd evaluate
+python3 -m pip install flask docker
+python3 docker_server.py &
+```
+
+Once the server is running you can now verify the defense accuracy
+```
 python verify_test_accuracy.py ../defenses/selfstudy-adversarial-robustness
 ```
+
 
 This will run each of the defenses in the benchmark and print out the accuracy of
 each in turn. You should see high numbers generally.
@@ -142,7 +168,7 @@ Then you can run the attack as follows
 
 ```
 cd baseline_attack_agent/
-python3 attack.py ../selfstudy-adversarial-robustness 0 0 log/selfstudy-adversarial-robustness-0.tar sonnet-3.7 > log/selfstudy-adversarial-robustness-0.log
+python3 attack.py ../defenses/selfstudy-adversarial-robustness 0 0 log/selfstudy-adversarial-robustness-0.tar sonnet-3.7 > log/selfstudy-adversarial-robustness-0.log
 ```
 
 If you run this attack with Claude 3.7 Sonnet, then it usually successfully breaks this defense.
